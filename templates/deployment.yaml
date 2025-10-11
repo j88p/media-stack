@@ -1,4 +1,5 @@
 {{- range .Values.apps }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -6,7 +7,8 @@ metadata:
   namespace: {{ $.Values.global.namespace }}
   labels:
     app: {{ .name }}
-    vpn-access: required
+    app.kubernetes.io/name: {{ .name }}
+    vpn-access: {{ if eq .name "plex" }}none{{ else }}required{{ end }}
 spec:
   replicas: 1
   selector:
@@ -16,97 +18,223 @@ spec:
     metadata:
       labels:
         app: {{ .name }}
-        vpn-access: required
+        app.kubernetes.io/name: {{ .name }}
+        vpn-access: {{ if eq .name "plex" }}none{{ else }}required{{ end }}
     spec:
-      containers:
-      - name: gluetun
-        image: {{ $.Values.global.vpn.image }}
-        securityContext:
-          privileged: true
-          capabilities:
-            add: [ "NET_ADMIN" ]
-        envFrom:
-        - configMapRef:
-            name: gluetun-common-env
-        env:
-          - name: FIREWALL_INPUT_PORTS
-            value: "{{ .port }}"
-          - name: FIREWALL_VPN_INPUT_PORTS
-            value: "{{ .port }}"
-          - name: OPENVPN_USER
-            valueFrom:
-              secretKeyRef:
-                name: {{ $.Values.global.vpn.secret }}
-                key: username
-          - name: OPENVPN_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: {{ $.Values.global.vpn.secret }}
-                key: password
-        resources:
-          {{- toYaml $.Values.resources.gluetun | nindent 10 }}
-        volumeMounts:
-        - mountPath: /dev/net/tun
-          name: dev-net-tun
-      - name: {{ .name }}
-        image: "{{ $.Values.global.media.imageRepo }}/{{ .name }}:latest"
-        ports:
-          - containerPort: {{ .port }}
-        envFrom:
-        - configMapRef:
-            name: media-common-env
-        resources:
-          {{- toYaml $.Values.resources.media | nindent 10 }}
-        livenessProbe:
-          httpGet:
-            path: /
-            port: {{ .port }}
-          initialDelaySeconds: 60
-          periodSeconds: 30
-          timeoutSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /
-            port: {{ .port }}
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-        volumeMounts:
+      {{- if eq .name "plex" }}
+        dnsPolicy: ClusterFirstWithHostNet
+        hostNetwork: true
+        containers:
+          - name: plex
+            image: "{{ $.Values.global.media.imageRepo }}/plex:{{ .imageTag | default "latest" }}"
+            ports:
+              - containerPort: 32400
+                protocol: TCP
+            livenessProbe:
+              tcpSocket:
+                port: 32400
+              initialDelaySeconds: 60
+              periodSeconds: 30
+              timeoutSeconds: 5
+            readinessProbe:
+              tcpSocket:
+                port: 32400
+              initialDelaySeconds: 30
+              periodSeconds: 10
+              timeoutSeconds: 5
+            envFrom:
+              - configMapRef:
+                  name: media-common-env
+            env:
+              - name: PUID
+                value: "0"
+              - name: PGID
+                value: "0"
+              - name: VERSION
+                value: "docker"
+              - name: ADVERTISE_IP
+                value: "https://plex.houseslab.org,http://192.168.1.128:32400"
+            resources:
+              {{- toYaml $.Values.resources.media | nindent 14 }}
+            securityContext:
+              privileged: true
+              runAsUser: 1000
+              runAsGroup: 1000
+            volumeMounts:
+              - name: plex-config
+                mountPath: /config
+              - name: transcode
+                mountPath: /transcode
+              - name: movies
+                mountPath: /movies
+              - name: barnfilmer
+                mountPath: /barnfilmer
+              - name: tvshows
+                mountPath: /tvshows
+              - name: barnserier
+                mountPath: /barnserier
+        volumes:
+          - name: plex-config
+            hostPath:
+              path: /opt/docker_volumes/plex/config
+          - name: transcode
+            hostPath:
+              path: /opt/docker_volumes/plex/transcode
+          - name: movies
+            hostPath:
+              path: /mnt/plexpool/movies
+          - name: barnfilmer
+            hostPath:
+              path: /mnt/plexpool/barnfilmer
+          - name: tvshows
+            hostPath:
+              path: /mnt/plexpool/tvshows
+          - name: barnserier
+            hostPath:
+              path: /mnt/plexpool/barnserier
+      {{- else }}
+        containers:
+          - name: gluetun
+            image: {{ $.Values.global.vpn.image }}
+            securityContext:
+              privileged: true
+              capabilities:
+                add: [ "NET_ADMIN" ]
+            envFrom:
+              - configMapRef:
+                  name: gluetun-common-env
+            env:
+              - name: FIREWALL_VPN_INPUT_PORTS
+                value: "{{ .port }}"
+              - name: VPN_INPUT_PORTS
+                value: "{{ .port }}"
+              - name: OPENVPN_USER
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ $.Values.global.vpn.secret }}
+                    key: username
+              - name: OPENVPN_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ $.Values.global.vpn.secret }}
+                    key: password
+            resources:
+              {{- toYaml $.Values.resources.gluetun | nindent 14 }}
+            volumeMounts:
+              - mountPath: /dev/net/tun
+                name: dev-net-tun
+          - name: {{ .name }}
+            image: "{{ $.Values.global.media.imageRepo }}/{{ .name }}:{{ .imageTag | default "latest" }}"
+            ports:
+              - containerPort: {{ .port }}
+            envFrom:
+              - configMapRef:
+                  name: media-common-env
+            resources:
+              {{- toYaml $.Values.resources.media | nindent 14 }}
+            livenessProbe:
+              tcpSocket:
+                port: {{ .port }}
+              initialDelaySeconds: 120
+              periodSeconds: 30
+              timeoutSeconds: 10
+              failureThreshold: 5
+            readinessProbe:
+              tcpSocket:
+                port: {{ .port }}
+              initialDelaySeconds: 90
+              periodSeconds: 20
+              timeoutSeconds: 10
+              failureThreshold: 5
+            volumeMounts:
+              - name: {{ .name }}-config
+                mountPath: /config
+              {{- if .needsDownloads }}
+              - name: downloads
+                mountPath: /downloads
+              {{- end }}
+              {{- if .incompleteHostPath }}
+              - name: incomplete
+                mountPath: /incomplete
+              {{- end }}
+              {{- if .finishedHostPath }}
+              - name: finished
+                mountPath: /finished
+              {{- end }}
+              {{- if .needsMovies }}
+              - name: movies
+                mountPath: /movies
+              {{- end }}
+              {{- if .needsTv }}
+              - name: tv
+                mountPath: /tv
+              {{- end }}
+              {{- if .needsBarnfilmer }}
+              - name: barnfilmer
+                mountPath: /barnfilmer
+              {{- end }}
+              {{- if .needsTvshows }}
+              - name: tvshows
+                mountPath: /tvshows
+              {{- end }}
+              {{- if .needsBarnserier }}
+              - name: barnserier
+                mountPath: /barnserier
+              {{- end }}
+        volumes:
           - name: {{ .name }}-config
-            mountPath: /config
+            hostPath:
+              {{- if .configHostPath }}
+              path: {{ .configHostPath }}
+              {{- else }}
+              path: {{ $.Values.global.media.basePath }}/{{ .name }}
+              {{- end }}
+          - name: dev-net-tun
+            hostPath:
+              path: /dev/net/tun
           {{- if .needsDownloads }}
           - name: downloads
-            mountPath: /downloads
+            hostPath:
+              {{- if .downloadsHostPath }}
+              path: {{ .downloadsHostPath }}
+              {{- else }}
+              path: {{ $.Values.global.media.volumes.downloads }}
+              {{- end }}
+          {{- end }}
+          {{- if .incompleteHostPath }}
+          - name: incomplete
+            hostPath:
+              path: {{ .incompleteHostPath }}
+          {{- end }}
+          {{- if .finishedHostPath }}
+          - name: finished
+            hostPath:
+              path: {{ .finishedHostPath }}
           {{- end }}
           {{- if .needsMovies }}
           - name: movies
-            mountPath: /movies
+            hostPath:
+              path: {{ $.Values.global.media.volumes.movies }}
           {{- end }}
           {{- if .needsTv }}
           - name: tv
-            mountPath: /tv
+            hostPath:
+              path: {{ $.Values.global.media.volumes.tv }}
           {{- end }}
-      volumes:
-        - name: {{ .name }}-config
-          hostPath:
-            path: {{ $.Values.global.media.basePath }}/{{ .name }}
-        - name: dev-net-tun
-          hostPath:
-            path: /dev/net/tun
-        {{- if .needsDownloads }}
-        - name: downloads
-          hostPath:
-            path: {{ $.Values.global.media.volumes.downloads }}
-        {{- end }}
-        {{- if .needsMovies }}
-        - name: movies
-          hostPath:
-            path: {{ $.Values.global.media.volumes.movies }}
-        {{- end }}
-        {{- if .needsTv }}
-        - name: tv
-          hostPath:
-            path: {{ $.Values.global.media.volumes.tv }}
-        {{- end }}
----
+          {{- if .needsBarnfilmer }}
+          - name: barnfilmer
+            hostPath:
+              path: {{ $.Values.global.media.volumes.barnfilmer }}
+          {{- end }}
+          {{- if .needsTvshows }}
+          - name: tvshows
+            hostPath:
+              path: {{ $.Values.global.media.volumes.tvshows }}
+          {{- end }}
+          {{- if .needsBarnserier }}
+          - name: barnserier
+            hostPath:
+              path: {{ $.Values.global.media.volumes.barnserier }}
+          {{- end }}
+      {{- end }}
 {{- end }}

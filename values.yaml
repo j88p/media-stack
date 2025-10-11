@@ -1,14 +1,15 @@
 global:
-  namespace: test
+  namespace: plex
   tz: Europe/Stockholm
   puid: "1000"
   pgid: "1000"
+  ingressClass: nginx
   vpn:
     provider: private internet access
     type: openvpn
     region: SE Stockholm
     dns: 10.152.183.10
-    outboundSubnets: 10.0.0.0/8,192.168.0.0/16
+    outboundSubnets: "10.0.0.0/8,192.168.0.0/16,10.244.0.0/16"
     image: qmcgaw/gluetun:latest
     secret: pia-credentials
   media:
@@ -21,6 +22,9 @@ global:
       movies: /media/movies
       tv: /media/tv
       music: /media/music
+      barnfilmer: /mnt/plexpool/barnfilmer
+      tvshows: /mnt/plexpool/tvshows
+      barnserier: /mnt/plexpool/barnserier
 
 # Resource limits for containers
 resources:
@@ -43,17 +47,63 @@ apps:
   - name: qbittorrent
     port: 8080
     needsDownloads: true
+    ingressHost: qbit.lan
+    # qBittorrent-specific path overrides
+    configHostPath: /opt/docker_volumes/qbittorrent/config
+    downloadsHostPath: /mnt/plexpool/newDownloads
+    incompleteHostPath: /mnt/plexpool/incomplete
+    finishedHostPath: /mnt/plexpool/finished
   - name: sonarr
     port: 8989
     needsDownloads: true
     needsTv: true
+    needsTvshows: true
+    needsBarnserier: true
+    ingressHost: son.lan
+    downloadsHostPath: /mnt/plexpool/newDownloads
+    incompleteHostPath: /mnt/plexpool/incomplete
+    finishedHostPath: /mnt/plexpool/finished
   - name: radarr
     port: 7878
     needsDownloads: true
     needsMovies: true
+    needsBarnfilmer: true
+    ingressHost: rad.lan
+    downloadsHostPath: /mnt/plexpool/newDownloads
+    incompleteHostPath: /mnt/plexpool/incomplete
+    finishedHostPath: /mnt/plexpool/finished
   - name: prowlarr
     port: 9696
     needsDownloads: false
+    ingressHost: pro.lan
   - name: overseerr
     port: 5055
     needsDownloads: false
+    ingressHost: ovr.lan
+    imageTag: develop
+
+  - name: plex
+    port: 32400
+    serviceType: ClusterIP
+    ingressHost: plex.lan
+    hostNetwork: true
+    needsConfig: true
+    needsTranscode: true
+    needsMovies: true
+    needsBarnfilmer: true
+    needsTvshows: true
+    needsBarnserier: true
+    env:
+      VERSION: docker
+      ADVERTISE_IP: "https://plex.houseslab.org,http://192.168.1.128:32400"
+    securityContext:
+      privileged: true
+      runAsUser: 1000
+      runAsGroup: 1000
+    volumes:
+      config: /opt/docker_volumes/plex/config
+      transcode: /opt/docker_volumes/plex/transcode
+      movies: /mnt/plexpool/movies
+      barnfilmer: /mnt/plexpool/barnfilmer
+      tvshows: /mnt/plexpool/tvshows
+      barnserier: /mnt/plexpool/barnserier

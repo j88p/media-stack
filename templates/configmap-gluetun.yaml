@@ -10,5 +10,12 @@ data:
   TZ: "{{ .Values.global.tz }}"
   FIREWALL: "on"
   FIREWALL_OUTBOUND_SUBNETS: "{{ .Values.global.vpn.outboundSubnets }}"
+  FIREWALL_DEBUG: "on"
+  {{- /* Build a comma-separated list of all app ports for input allowlist */}}
+  {{- $ports := list -}}
+  {{- range .Values.apps }}
+  {{- $ports = append $ports (toString .port) -}}
+  {{- end }}
+  FIREWALL_INPUT_PORTS: "{{ join "," $ports }}"
   DOT: "off"
   DNS_ADDRESS: "{{ .Values.global.vpn.dns }}"
