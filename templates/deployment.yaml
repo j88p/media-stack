@@ -1,0 +1,112 @@
+{{- range .Values.apps }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .name }}
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    app: {{ .name }}
+    vpn-access: required
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .name }}
+        vpn-access: required
+    spec:
+      containers:
+      - name: gluetun
+        image: {{ $.Values.global.vpn.image }}
+        securityContext:
+          privileged: true
+          capabilities:
+            add: [ "NET_ADMIN" ]
+        envFrom:
+        - configMapRef:
+            name: gluetun-common-env
+        env:
+          - name: FIREWALL_INPUT_PORTS
+            value: "{{ .port }}"
+          - name: FIREWALL_VPN_INPUT_PORTS
+            value: "{{ .port }}"
+          - name: OPENVPN_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ $.Values.global.vpn.secret }}
+                key: username
+          - name: OPENVPN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ $.Values.global.vpn.secret }}
+                key: password
+        resources:
+          {{- toYaml $.Values.resources.gluetun | nindent 10 }}
+        volumeMounts:
+        - mountPath: /dev/net/tun
+          name: dev-net-tun
+      - name: {{ .name }}
+        image: "{{ $.Values.global.media.imageRepo }}/{{ .name }}:latest"
+        ports:
+          - containerPort: {{ .port }}
+        envFrom:
+        - configMapRef:
+            name: media-common-env
+        resources:
+          {{- toYaml $.Values.resources.media | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: {{ .port }}
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: {{ .port }}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        volumeMounts:
+          - name: {{ .name }}-config
+            mountPath: /config
+          {{- if .needsDownloads }}
+          - name: downloads
+            mountPath: /downloads
+          {{- end }}
+          {{- if .needsMovies }}
+          - name: movies
+            mountPath: /movies
+          {{- end }}
+          {{- if .needsTv }}
+          - name: tv
+            mountPath: /tv
+          {{- end }}
+      volumes:
+        - name: {{ .name }}-config
+          hostPath:
+            path: {{ $.Values.global.media.basePath }}/{{ .name }}
+        - name: dev-net-tun
+          hostPath:
+            path: /dev/net/tun
+        {{- if .needsDownloads }}
+        - name: downloads
+          hostPath:
+            path: {{ $.Values.global.media.volumes.downloads }}
+        {{- end }}
+        {{- if .needsMovies }}
+        - name: movies
+          hostPath:
+            path: {{ $.Values.global.media.volumes.movies }}
+        {{- end }}
+        {{- if .needsTv }}
+        - name: tv
+          hostPath:
+            path: {{ $.Values.global.media.volumes.tv }}
+        {{- end }}
+---
+{{- end }}

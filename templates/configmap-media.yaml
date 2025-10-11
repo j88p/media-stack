@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: media-common-env
+  namespace: {{ .Values.global.namespace }}
+data:
+  PUID: "{{ .Values.global.puid }}"
+  PGID: "{{ .Values.global.pgid }}"
+  TZ: "{{ .Values.global.tz }}"

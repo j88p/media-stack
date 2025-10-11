@@ -1,0 +1,59 @@
+global:
+  namespace: test
+  tz: Europe/Stockholm
+  puid: "1000"
+  pgid: "1000"
+  vpn:
+    provider: private internet access
+    type: openvpn
+    region: SE Stockholm
+    dns: 10.152.183.10
+    outboundSubnets: 10.0.0.0/8,192.168.0.0/16
+    image: qmcgaw/gluetun:latest
+    secret: pia-credentials
+  media:
+    imageRepo: linuxserver
+    # Base path for media volumes
+    basePath: /opt/docker_volumes
+    # Media directories
+    volumes:
+      downloads: /media/downloads
+      movies: /media/movies
+      tv: /media/tv
+      music: /media/music
+
+# Resource limits for containers
+resources:
+  gluetun:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  media:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+apps:
+  - name: qbittorrent
+    port: 8080
+    needsDownloads: true
+  - name: sonarr
+    port: 8989
+    needsDownloads: true
+    needsTv: true
+  - name: radarr
+    port: 7878
+    needsDownloads: true
+    needsMovies: true
+  - name: prowlarr
+    port: 9696
+    needsDownloads: false
+  - name: overseerr
+    port: 5055
+    needsDownloads: false

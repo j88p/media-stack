@@ -1,0 +1,4 @@
+apiVersion: v2
+name: media-stack
+version: 0.1.0
+description: Helm chart for Sonarr, Radarr, qBittorrent, Overseerr, Prowlarr via Gluetun VPN

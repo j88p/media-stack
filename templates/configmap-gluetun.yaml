@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gluetun-common-env
+  namespace: {{ .Values.global.namespace }}
+data:
+  VPN_SERVICE_PROVIDER: "{{ .Values.global.vpn.provider }}"
+  VPN_TYPE: "{{ .Values.global.vpn.type }}"
+  SERVER_REGIONS: "{{ .Values.global.vpn.region }}"
+  TZ: "{{ .Values.global.tz }}"
+  FIREWALL: "on"
+  FIREWALL_OUTBOUND_SUBNETS: "{{ .Values.global.vpn.outboundSubnets }}"
+  DOT: "off"
+  DNS_ADDRESS: "{{ .Values.global.vpn.dns }}"

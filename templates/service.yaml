@@ -1,0 +1,19 @@
+{{- range .Values.apps }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .name }}
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    app: {{ .name }}
+spec:
+  selector:
+    app: {{ .name }}
+  ports:
+    - name: http
+      port: {{ .port }}
+      targetPort: {{ .port }}
+      protocol: TCP
+  type: ClusterIP
+---
+{{- end }}
