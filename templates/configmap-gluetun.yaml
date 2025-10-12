@@ -4,12 +4,24 @@ metadata:
   name: gluetun-common-env
   namespace: {{ .Values.global.namespace }}
 data:
-  VPN_SERVICE_PROVIDER: "{{ .Values.global.vpn.provider }}"
-  VPN_TYPE: "{{ .Values.global.vpn.type }}"
-  SERVER_REGIONS: "{{ .Values.global.vpn.region }}"
+  {{/* Välj VPN-profil baserat på global.chosenVpn, fallback till 'pia' */}}
+  {{- $chosen := (default "pia" .Values.global.chosenVpn) -}}
+  {{- $vpnMap := .Values.global.vpn -}}
+  {{- $vpn := (index $vpnMap $chosen) -}}
+  {{- if not $vpn -}}
+  {{- $vpn = (index $vpnMap "pia") -}}
+  {{- end -}}
+  VPN_SERVICE_PROVIDER: "{{ default "" $vpn.provider }}"
+  VPN_TYPE: "{{ default "openvpn" $vpn.type }}"
+  {{- $prov := lower (default "" $vpn.provider) -}}
+  {{- if eq $prov "mullvad" }}
+  SERVER_COUNTRIES: "{{ default "" $vpn.region }}"
+  {{- else }}
+  SERVER_REGIONS: "{{ default "" $vpn.region }}"
+  {{- end }}
   TZ: "{{ .Values.global.tz }}"
   FIREWALL: "on"
-  FIREWALL_OUTBOUND_SUBNETS: "{{ .Values.global.vpn.outboundSubnets }}"
+  FIREWALL_OUTBOUND_SUBNETS: "{{ default "" $vpn.outboundSubnets }}"
   FIREWALL_DEBUG: "on"
   {{- /* Build a comma-separated list of all app ports for input allowlist */}}
   {{- $ports := list -}}
@@ -18,4 +30,4 @@ data:
   {{- end }}
   FIREWALL_INPUT_PORTS: "{{ join "," $ports }}"
   DOT: "off"
-  DNS_ADDRESS: "{{ .Values.global.vpn.dns }}"
+  DNS_ADDRESS: "{{ default "1.1.1.1" $vpn.dns }}"

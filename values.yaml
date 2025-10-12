@@ -4,24 +4,32 @@ global:
   puid: "1000"
   pgid: "1000"
   ingressClass: nginx
+  chosenVpn: none
   vpn:
-    provider: private internet access
-    type: openvpn
-    region: SE Stockholm
-    dns: 10.152.183.10
-    outboundSubnets: "10.0.0.0/8,192.168.0.0/16,10.244.0.0/16"
-    image: qmcgaw/gluetun:latest
-    secret: pia-credentials
+    pia:
+      provider: private internet access
+      type: openvpn
+      region: SE Stockholm
+      dns: 10.152.183.10
+      outboundSubnets: "10.0.0.0/8,192.168.0.0/16,10.244.0.0/16"
+      image: qmcgaw/gluetun:latest
+      secret: pia-credentials
+    mullvad:
+      provider: mullvad
+      type: openvpn
+      region: se
+      dns: ""
+      outboundSubnets: "10.0.0.0/8,192.168.0.0/16,10.244.0.0/16"
+      image: qmcgaw/gluetun:latest
+      secret: mullvad-credentials
   media:
     imageRepo: linuxserver
     # Base path for media volumes
     basePath: /opt/docker_volumes
     # Media directories
     volumes:
-      downloads: /media/downloads
-      movies: /media/movies
-      tv: /media/tv
-      music: /media/music
+      downloads: /mnt/plexpool/newDownloads
+      movies: /mnt/plexpool/movies
       barnfilmer: /mnt/plexpool/barnfilmer
       tvshows: /mnt/plexpool/tvshows
       barnserier: /mnt/plexpool/barnserier

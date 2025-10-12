@@ -95,7 +95,13 @@ spec:
       {{- else }}
         containers:
           - name: gluetun
-            image: {{ $.Values.global.vpn.image }}
+            {{ $chosen := (default "pia" $.Values.global.chosenVpn) }}
+            {{ $vpnMap := $.Values.global.vpn }}
+            {{ $vpn := (index $vpnMap $chosen) }}
+            {{ if not $vpn }}
+            {{ $vpn = (index $vpnMap "pia") }}
+            {{ end }}
+            image: {{ default "qmcgaw/gluetun:latest" $vpn.image }}
             securityContext:
               privileged: true
               capabilities:
@@ -111,12 +117,12 @@ spec:
               - name: OPENVPN_USER
                 valueFrom:
                   secretKeyRef:
-                    name: {{ $.Values.global.vpn.secret }}
+                    name: {{ default "pia-credentials" $vpn.secret }}
                     key: username
               - name: OPENVPN_PASSWORD
                 valueFrom:
                   secretKeyRef:
-                    name: {{ $.Values.global.vpn.secret }}
+                    name: {{ default "pia-credentials" $vpn.secret }}
                     key: password
             resources:
               {{- toYaml $.Values.resources.gluetun | nindent 14 }}
@@ -219,7 +225,7 @@ spec:
           {{- if .needsTv }}
           - name: tv
             hostPath:
-              path: {{ $.Values.global.media.volumes.tv }}
+              path: {{ default $.Values.global.media.volumes.tvshows $.Values.global.media.volumes.tv }}
           {{- end }}
           {{- if .needsBarnfilmer }}
           - name: barnfilmer
