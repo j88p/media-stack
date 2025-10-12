@@ -1,19 +1,31 @@
 {{- range .Values.apps }}
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .name }}
+  name: {{ .name }}-service
   namespace: {{ $.Values.global.namespace }}
   labels:
     app: {{ .name }}
+    app.kubernetes.io/name: {{ .name }}
 spec:
+  {{- if eq .name "plex" }}
+  publishNotReadyAddresses: true
+  {{- end }}
   selector:
     app: {{ .name }}
+    app.kubernetes.io/name: {{ .name }}
   ports:
     - name: http
-      port: {{ .port }}
+      port: {{ .servicePort | default .port }}
       targetPort: {{ .port }}
       protocol: TCP
+      {{- if and (eq .name "plex") (eq .serviceType "NodePort") }}
+      nodePort: {{ .nodePort }}
+      {{- end }}
+  {{- if and (eq .name "plex") (eq .serviceType "NodePort") }}
+  type: NodePort
+  {{- else }}
   type: ClusterIP
----
+  {{- end }}
 {{- end }}

@@ -1,0 +1,32 @@
+{{- range .Values.apps }}
+---
+{{- if .ingressHost }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .name }}-local-ingress
+  namespace: {{ $.Values.global.namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    {{- if $.Values.global.ingressClass }}
+    kubernetes.io/ingress.class: {{ $.Values.global.ingressClass | quote }}
+    {{- end }}
+spec:
+  {{- if $.Values.global.ingressClass }}
+  ingressClassName: {{ $.Values.global.ingressClass }}
+  {{- else }}
+  ingressClassName: nginx
+  {{- end }}
+  rules:
+    - host: {{ .ingressHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .name }}-service
+                port:
+                  number: {{ .servicePort | default .port }}
+{{- end }}
+{{- end }}
