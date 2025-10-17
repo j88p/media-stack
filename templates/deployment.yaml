@@ -22,6 +22,7 @@ spec:
         vpn-access: {{ if eq .name "plex" }}none{{ else }}required{{ end }}
     spec:
       {{- if eq .name "plex" }}
+        {{- $tlsEnabled := or $.Values.global.tls.enabled .enableTls }}
         dnsPolicy: ClusterFirstWithHostNet
         hostNetwork: true
         containers:
@@ -61,6 +62,11 @@ spec:
               runAsUser: 1000
               runAsGroup: 1000
             volumeMounts:
+            {{- if $tlsEnabled }}
+              - mountPath: /certs
+                name: tls-certs
+                readOnly: true
+            {{- end }}
               - name: plex-config
                 mountPath: /config
               - name: transcode
@@ -74,6 +80,11 @@ spec:
               - name: barnserier
                 mountPath: /barnserier
         volumes:
+          {{- if $tlsEnabled }}
+          - name: tls-certs
+            secret:
+              secretName: {{ .tlsSecretName | default (printf "%s-tls" .name) }}
+          {{- end }}
           - name: plex-config
             hostPath:
               path: /opt/docker_volumes/plex/config
@@ -95,7 +106,13 @@ spec:
       {{- else }}
         containers:
           - name: gluetun
-            image: {{ $.Values.global.vpn.image }}
+            {{ $chosen := (default "pia" $.Values.global.chosenVpn) }}
+            {{ $vpnMap := $.Values.global.vpn }}
+            {{ $vpn := (index $vpnMap $chosen) }}
+            {{ if not $vpn }}
+            {{ $vpn = (index $vpnMap "pia") }}
+            {{ end }}
+            image: {{ default "qmcgaw/gluetun:latest" $vpn.image }}
             securityContext:
               privileged: true
               capabilities:
@@ -111,12 +128,12 @@ spec:
               - name: OPENVPN_USER
                 valueFrom:
                   secretKeyRef:
-                    name: {{ $.Values.global.vpn.secret }}
+                    name: {{ default "pia-credentials" $vpn.secret }}
                     key: username
               - name: OPENVPN_PASSWORD
                 valueFrom:
                   secretKeyRef:
-                    name: {{ $.Values.global.vpn.secret }}
+                    name: {{ default "pia-credentials" $vpn.secret }}
                     key: password
             resources:
               {{- toYaml $.Values.resources.gluetun | nindent 14 }}
@@ -219,7 +236,7 @@ spec:
           {{- if .needsTv }}
           - name: tv
             hostPath:
-              path: {{ $.Values.global.media.volumes.tv }}
+              path: {{ default $.Values.global.media.volumes.tvshows $.Values.global.media.volumes.tv }}
           {{- end }}
           {{- if .needsBarnfilmer }}
           - name: barnfilmer

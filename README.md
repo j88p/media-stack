@@ -91,7 +91,7 @@ blkid
 
 Redigera `/etc/fstab` för att montera via UUID:
 
-```
+```ini
 # Plex1
 UUID=c6078a53-52b1-4711-9511-1cec7bfa11e8 /media/plex7 ext4 defaults,nofail 0 2
 
@@ -151,6 +151,7 @@ sudo mkfs.ext4 /dev/sdX
    - Ange VPN-uppgifter och region för Gluetun-sidecars.
    - Ange Ingress-värdnamn för varje app (t.ex. `son.lan`, `rad.lan`, `qbit.lan`, `plex.lan`).
    - Lägg vid behov till poster i din `/etc/hosts` som pekar dessa namn till IP-adressen för din Ingress-kontroller (t.ex. `192.168.1.128`).
+   - (Valfritt) Aktivera TLS för Ingress med `global.tls.enabled: true`. Se avsnittet "TLS" nedan.
 
 3. **Installera helmchart:**
 
@@ -167,6 +168,174 @@ sudo mkfs.ext4 /dev/sdX
 4. **Åtkomst till dina appar:**
    - Plex: via Ingress (`http://plex.lan`) som routar till tjänsten `plex-service` på port 32400
    - Övriga appar: via Ingress (`http://son.lan`, `http://rad.lan`, `http://qbit.lan`, `http://pro.lan`, `http://ovr.lan`)
+
+## TLS
+
+Du kan aktivera TLS för dina Ingress-resurser genom att sätta:
+
+```yaml
+global:
+   tls:
+      enabled: true
+```
+
+När TLS är aktiverat:
+
+- Varje app med `ingressHost` får en `spec.tls`-sektion med samma host.
+- `secretName` för TLS antas vara `<app>-tls` om inget annat anges.
+- Du kan åsidosätta per app med `tlsSecretName` i `values.yaml`, t.ex.:
+
+```yaml
+apps:
+   - name: sonarr
+      ingressHost: son.lan
+      tlsSecretName: sonarr-custom-tls
+```
+
+### Använda cert-manager
+
+Om du använder cert-manager kan du låta certifikaten skapas automatiskt genom att ange en issuer:
+
+```yaml
+global:
+   tls:
+      enabled: true
+      issuerKind: cluster-issuer   # eller "issuer" om du använder en namespaced Issuer
+      issuerName: letsencrypt-prod # namnet på din (Cluster)Issuer
+```
+
+Detta lägger till en annotation på varje Ingress:
+
+```yaml
+cert-manager.io/cluster-issuer: "letsencrypt-prod"
+```
+
+cert-manager skapar då TLS-sekreten automatiskt med samma namn som i `secretName` (default `<app>-tls`, eller `tlsSecretName` per app). Du behöver alltså inte skapa secreten manuellt när cert-manager används.
+
+### Exempel: `certificate.yaml`
+
+Nedan finns två exempel på hur du kan skapa certifikat med cert-manager.
+
+1) Självsignerad rot + Issuer i namespace `plex` (passar interna .lan-domäner)
+
+Skapa en självsignerad CA och använd den för att utfärda ett delat certifikat för alla dina interna hosts. Allt sker i namespace `plex` och funkar helt lokalt.
+
+```yaml
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+   name: selfsigned-issuer
+   namespace: plex
+spec:
+   selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+   name: media-ca
+   namespace: plex
+spec:
+   isCA: true
+   commonName: media-ca
+   secretName: media-ca-root
+   issuerRef:
+      name: selfsigned-issuer
+      kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+   name: media-ca-issuer
+   namespace: plex
+spec:
+   ca:
+      secretName: media-ca-root
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+   name: media-stack-certificate
+   namespace: plex
+spec:
+   secretName: media-stack-tls
+   issuerRef:
+      name: media-ca-issuer
+      kind: Issuer
+   commonName: media.lan
+   dnsNames:
+      - qbit.lan
+      - son.lan
+      - rad.lan
+      - pro.lan
+      - ovr.lan
+      - plex.lan
+```
+
+Använd detta tillsammans med:
+
+```yaml
+global:
+   tls:
+      enabled: true
+      issuerKind: issuer
+      issuerName: media-ca-issuer
+```
+
+Vill du återanvända samma certifikat för alla appar, sätt per app:
+
+```yaml
+apps:
+   - name: sonarr
+      ingressHost: son.lan
+      tlsSecretName: media-stack-tls
+   - name: radarr
+      ingressHost: rad.lan
+      tlsSecretName: media-stack-tls
+   # ...osv
+```
+
+1) Let’s Encrypt (publik domän)
+
+Om du har en publik domän och vill använda Let’s Encrypt, skapa (Cluster)Issuer separat (exempelvis `letsencrypt-prod`) enligt cert-manager-dokumentationen och referera den i `values.yaml`:
+
+```yaml
+global:
+   tls:
+      enabled: true
+      issuerKind: cluster-issuer
+      issuerName: letsencrypt-prod
+```
+
+Skapa sedan ett Certificate (valfritt) om du vill dela en och samma secret, annars kommer cert-manager skapa en secret per Ingress automatiskt:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+   name: media-stack-certificate
+   namespace: plex
+spec:
+   secretName: media-stack-tls
+   issuerRef:
+      name: letsencrypt-prod
+      kind: ClusterIssuer
+   dnsNames:
+      - son.example.com
+      - rad.example.com
+      - qbit.example.com
+      - pro.example.com
+      - ovr.example.com
+      - plex.example.com
+```
+
+Obs: Let’s Encrypt fungerar inte för `.lan` eller icke-publika domäner med HTTP-01. Använd DNS-01 eller självsignerad/egen CA för interna domäner.
+
+Applicera filen:
+
+```sh
+kubectl apply -f certificate.yaml
+```
 
 ## Avinstallera
 

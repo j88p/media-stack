@@ -1,6 +1,6 @@
 {{- range .Values.apps }}
----
 {{- if .ingressHost }}
+{{- $tlsEnabled := or $.Values.global.tls.enabled .enableTls }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -11,11 +11,20 @@ metadata:
     {{- if $.Values.global.ingressClass }}
     kubernetes.io/ingress.class: {{ $.Values.global.ingressClass | quote }}
     {{- end }}
+    {{- if and $tlsEnabled $.Values.global.tls.issuerName }}
+    cert-manager.io/{{ default "cluster-issuer" $.Values.global.tls.issuerKind }}: {{ $.Values.global.tls.issuerName | quote }}
+    {{- end }}
 spec:
   {{- if $.Values.global.ingressClass }}
   ingressClassName: {{ $.Values.global.ingressClass }}
   {{- else }}
   ingressClassName: nginx
+  {{- end }}
+  {{- if $tlsEnabled }}
+  tls:
+    - hosts:
+        - {{ .ingressHost }}
+      secretName: {{ .tlsSecretName | default (printf "%s-tls" .name) }}
   {{- end }}
   rules:
     - host: {{ .ingressHost }}
