@@ -23,6 +23,8 @@ spec:
     spec:
       {{- if eq .name "plex" }}
         {{- $tlsEnabled := or $.Values.global.tls.enabled .enableTls }}
+        {{- $secretName := (or .tlsSecretName $.Values.global.tls.defaultSecretName) | default (printf "%s-tls" .name) }}
+        {{- $internalSecret := (coalesce .internalTlsSecretName $.Values.global.tls.internalDefaultSecretName) }}
         dnsPolicy: ClusterFirstWithHostNet
         hostNetwork: true
         containers:
@@ -66,6 +68,11 @@ spec:
               - mountPath: /certs
                 name: tls-certs
                 readOnly: true
+              {{- if $internalSecret }}
+              - mountPath: /certs-internal
+                name: tls-certs-internal
+                readOnly: true
+              {{- end }}
             {{- end }}
               - name: plex-config
                 mountPath: /config
@@ -83,7 +90,12 @@ spec:
           {{- if $tlsEnabled }}
           - name: tls-certs
             secret:
-              secretName: {{ .tlsSecretName | default (printf "%s-tls" .name) }}
+              secretName: {{ $secretName }}
+          {{- if $internalSecret }}
+          - name: tls-certs-internal
+            secret:
+              secretName: {{ $internalSecret }}
+          {{- end }}
           {{- end }}
           - name: plex-config
             hostPath:

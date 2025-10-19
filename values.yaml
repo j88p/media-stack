@@ -5,7 +5,7 @@ global:
   pgid: "1000"
   ingressClass: nginx
   tls:
-    enabled: false
+    enabled: true
   vpn:
     provider: private internet access
     type: openvpn
