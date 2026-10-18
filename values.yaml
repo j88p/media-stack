@@ -54,7 +54,7 @@ resources:
 
 apps:
   - name: qbittorrent
-    port: 8000
+    port: 8080
     needsDownloads: true
     ingressHost: qbit.lan
     # qBittorrent-specific path overrides
