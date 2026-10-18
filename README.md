@@ -115,16 +115,100 @@ apps:
         hostPath: /your/tvshows
 ```
 
-### 5. Install
+### 5. Create values.local.yaml
+
+`values.yaml` in this repo contains generic placeholders. Keep your real values in a separate file that you never commit:
+
+```yaml
+# values.local.yaml — DO NOT COMMIT
+global:
+  routing:
+    gateway:
+      section: your-listener-section
+  vpn:
+    dns: 10.96.0.10        # your cluster DNS IP
+    outboundSubnets: "10.96.0.0/12,192.168.0.0/16"
+
+apps:
+  - name: qbittorrent
+    port: 8080
+    imageTag: "5.2.4_v2.0.15-ls481"
+    needsDownloads: true
+    portForwardUpdater: true
+    ingressHost: qbit.yourdomain.com
+    configHostPath: /your/qbittorrent/config
+    downloadsHostPath: /your/downloads
+    incompleteHostPath: /your/incomplete
+    finishedHostPath: /your/finished
+  - name: sonarr
+    port: 8989
+    imageTag: "4.0.20.3014-ls329"
+    needsDownloads: true
+    needsTvshows: true
+    ingressHost: son.yourdomain.com
+    downloadsHostPath: /your/downloads
+    incompleteHostPath: /your/incomplete
+    finishedHostPath: /your/finished
+    extraVolumeMounts:
+      - name: tvshows
+        mountPath: /tvshows
+        hostPath: /your/tvshows
+  - name: radarr
+    port: 7878
+    imageTag: "6.4.4.10685-ls321"
+    needsDownloads: true
+    needsMovies: true
+    ingressHost: rad.yourdomain.com
+    downloadsHostPath: /your/downloads
+    incompleteHostPath: /your/incomplete
+    finishedHostPath: /your/finished
+  - name: prowlarr
+    port: 9696
+    imageTag: "2.6.5.5623-ls163"
+    ingressHost: pro.yourdomain.com
+  - name: seerr
+    port: 5055
+    imageTag: "v3.5.0"
+    noVpn: true
+    imageRepo: seerr
+    configMountPath: /app/config
+    configHostPath: /your/seerr
+    ingressHost: seerr.yourdomain.com
+  - name: plex
+    port: 32400
+    imageTag: "1.43.4.10903-e5521bd8c-ls327"
+    serviceType: ClusterIP
+    ingressHost: plex.yourdomain.com
+    hostNetwork: true
+    env:
+      ADVERTISE_IP: "https://plex.yourdomain.com,http://192.168.x.x:32400"
+    securityContext:
+      privileged: true
+      runAsUser: 1000
+      runAsGroup: 1000
+    volumes:
+      config: /your/plex/config
+      transcode: /your/plex/transcode
+      movies: /your/movies
+      tvshows: /your/tvshows
+```
+
+Add it to `.gitignore` so it never gets committed:
 
 ```sh
-helm install media-stack . -n plex
+echo "values.local.yaml" >> .gitignore
+```
+
+### 6. Install
+
+```sh
+helm install media-stack . -n plex -f values.local.yaml
 ```
 
 Upgrade:
 
 ```sh
-helm upgrade media-stack . -n plex
+helm upgrade media-stack . -n plex -f values.local.yaml
 ```
 
 > **MicroK8s users:** use `microk8s helm` and `~/repos/media-stack` as the chart path. Never use `--reuse-values` — it silently ignores `values.yaml` changes.
