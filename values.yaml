@@ -3,13 +3,19 @@ global:
   tz: Europe/Stockholm
   puid: "1000"
   pgid: "1000"
-  gateway:
-    name: nginx-gateway
-    namespace: nginx-gateway
-    section: houseslab-local
+
+  # Routing — "gateway" uses Gateway API (HTTPRoute), "ingress" uses standard Ingress
+  routing:
+    type: gateway
+    gateway:
+      name: nginx-gateway
+      namespace: nginx-gateway
+      section: houseslab-local
+    ingressClass: nginx
+
   vpn:
-    provider: private internet access
-    type: openvpn
+    provider: private internet access   # any gluetun-supported provider
+    type: openvpn                        # openvpn or wireguard
     region: "Netherlands"
     dns: 10.152.183.10
     outboundSubnets: "10.1.0.0/16,10.152.183.0/24,192.168.0.0/16,10.244.0.0/16"
@@ -17,17 +23,16 @@ global:
     secret: pia-credentials
     openvpnEndpointPort: "1197"
     openvpnProtocol: udp
+
   media:
     imageRepo: linuxserver
     basePath: /opt/docker_volumes
     volumes:
       downloads: /media/downloads
-      movies: /media/movies
+      movies: /mnt/plexpool/movies
       tv: /media/tv
       music: /media/music
-      barnfilmer: /mnt/plexpool/barnfilmer
       tvshows: /mnt/plexpool/tvshows
-      barnserier: /mnt/plexpool/barnserier
 
 # Resource limits for containers
 resources:
@@ -71,27 +76,36 @@ apps:
     downloadsHostPath: /mnt/plexpool/newDownloads
     incompleteHostPath: /mnt/plexpool/incomplete
     finishedHostPath: /mnt/plexpool/finished
+
   - name: sonarr
     port: 8989
     imageTag: "4.0.20.3014-ls329"
     needsDownloads: true
     needsTv: true
     needsTvshows: true
-    needsBarnserier: true
     ingressHost: son.local.houseslab.org
     downloadsHostPath: /mnt/plexpool/newDownloads
     incompleteHostPath: /mnt/plexpool/incomplete
     finishedHostPath: /mnt/plexpool/finished
+    extraVolumeMounts:
+      - name: barnserier
+        mountPath: /barnserier
+        hostPath: /mnt/plexpool/barnserier
+
   - name: radarr
     port: 7878
     imageTag: "6.4.4.10685-ls321"
     needsDownloads: true
     needsMovies: true
-    needsBarnfilmer: true
     ingressHost: rad.local.houseslab.org
     downloadsHostPath: /mnt/plexpool/newDownloads
     incompleteHostPath: /mnt/plexpool/incomplete
     finishedHostPath: /mnt/plexpool/finished
+    extraVolumeMounts:
+      - name: barnfilmer
+        mountPath: /barnfilmer
+        hostPath: /mnt/plexpool/barnfilmer
+
   - name: prowlarr
     port: 9696
     imageTag: "2.6.5.5623-ls163"
@@ -113,14 +127,7 @@ apps:
     serviceType: ClusterIP
     ingressHost: plex.local.houseslab.org
     hostNetwork: true
-    needsConfig: true
-    needsTranscode: true
-    needsMovies: true
-    needsBarnfilmer: true
-    needsTvshows: true
-    needsBarnserier: true
     env:
-      VERSION: docker
       ADVERTISE_IP: "https://plex.houseslab.org,http://192.168.1.128:32400"
     securityContext:
       privileged: true
@@ -130,6 +137,11 @@ apps:
       config: /opt/docker_volumes/plex/config
       transcode: /opt/docker_volumes/plex/transcode
       movies: /mnt/plexpool/movies
-      barnfilmer: /mnt/plexpool/barnfilmer
       tvshows: /mnt/plexpool/tvshows
-      barnserier: /mnt/plexpool/barnserier
+    extraVolumeMounts:
+      - name: barnfilmer
+        mountPath: /barnfilmer
+        hostPath: /mnt/plexpool/barnfilmer
+      - name: barnserier
+        mountPath: /barnserier
+        hostPath: /mnt/plexpool/barnserier
