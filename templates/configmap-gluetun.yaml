@@ -23,3 +23,4 @@ data:
   OPENVPN_ENDPOINT_PORT: "{{ .Values.global.vpn.openvpnEndpointPort }}"
   OPENVPN_PROTOCOL: "{{ .Values.global.vpn.openvpnProtocol }}"
   HEALTH_SERVER_ADDRESS: ":9999"
+  VPN_PORT_FORWARDING: "on"
