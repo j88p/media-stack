@@ -6,19 +6,19 @@ global:
 
   # Routing — "gateway" uses Gateway API (HTTPRoute), "ingress" uses standard Ingress
   routing:
-    type: gateway
+    type: gateway                 # "gateway" (Gateway API) or "ingress" (standard Ingress)
     gateway:
-      name: nginx-gateway
-      namespace: nginx-gateway
-      section: houseslab-local
-    ingressClass: nginx
+      name: nginx-gateway         # name of your Gateway resource
+      namespace: nginx-gateway    # namespace it lives in
+      section: https-listener     # listener section name
+    ingressClass: nginx           # used when type is "ingress"
 
   vpn:
     provider: private internet access   # any gluetun-supported provider
     type: openvpn                        # openvpn or wireguard
     region: "Netherlands"
-    dns: 10.152.183.10
-    outboundSubnets: "10.1.0.0/16,10.152.183.0/24,192.168.0.0/16,10.244.0.0/16"
+    dns: 10.96.0.10                      # cluster DNS (kubectl get svc kube-dns -n kube-system)
+    outboundSubnets: "10.96.0.0/12,192.168.0.0/16"   # cluster CIDR + LAN — keep VPN traffic local
     image: qmcgaw/gluetun:v3.41.3
     secret: pia-credentials
     openvpnEndpointPort: "1197"
@@ -71,7 +71,7 @@ apps:
     imageTag: "5.2.4_v2.0.15-ls481"
     needsDownloads: true
     portForwardUpdater: true
-    ingressHost: qbit.local.houseslab.org
+    ingressHost: qbit.yourdomain.com
     configHostPath: /opt/docker_volumes/qbittorrent/config
     downloadsHostPath: /mnt/plexpool/newDownloads
     incompleteHostPath: /mnt/plexpool/incomplete
@@ -83,7 +83,7 @@ apps:
     needsDownloads: true
     needsTv: true
     needsTvshows: true
-    ingressHost: son.local.houseslab.org
+    ingressHost: son.yourdomain.com
     downloadsHostPath: /mnt/plexpool/newDownloads
     incompleteHostPath: /mnt/plexpool/incomplete
     finishedHostPath: /mnt/plexpool/finished
@@ -97,7 +97,7 @@ apps:
     imageTag: "6.4.4.10685-ls321"
     needsDownloads: true
     needsMovies: true
-    ingressHost: rad.local.houseslab.org
+    ingressHost: rad.yourdomain.com
     downloadsHostPath: /mnt/plexpool/newDownloads
     incompleteHostPath: /mnt/plexpool/incomplete
     finishedHostPath: /mnt/plexpool/finished
@@ -110,7 +110,7 @@ apps:
     port: 9696
     imageTag: "2.6.5.5623-ls163"
     needsDownloads: false
-    ingressHost: pro.local.houseslab.org
+    ingressHost: pro.yourdomain.com
 
   - name: seerr
     port: 5055
@@ -119,16 +119,16 @@ apps:
     imageRepo: seerr
     configMountPath: /app/config
     configHostPath: /opt/docker_volumes/seerr
-    ingressHost: seerr.local.houseslab.org
+    ingressHost: seerr.yourdomain.com
 
   - name: plex
     port: 32400
     imageTag: "1.43.4.10903-e5521bd8c-ls327"
     serviceType: ClusterIP
-    ingressHost: plex.local.houseslab.org
+    ingressHost: plex.yourdomain.com
     hostNetwork: true
     env:
-      ADVERTISE_IP: "https://plex.houseslab.org,http://192.168.1.128:32400"
+      ADVERTISE_IP: "https://plex.yourdomain.com,http://192.168.x.x:32400"
     securityContext:
       privileged: true
       runAsUser: 1000
