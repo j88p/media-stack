@@ -1,38 +1,37 @@
 # media-stack
 
-Helm chart for a self-hosted media server running on Kubernetes. Deploys **Plex**, **Sonarr**, **Radarr**, **qBittorrent**, **Prowlarr** and **Seerr** — all traffic-sensitive apps run with a dedicated **Gluetun VPN sidecar** (PIA / OpenVPN).
-
-> **Note:** This chart is built for a single-node MicroK8s setup with Gateway API (nginx-gateway-fabric) and mergerfs storage. Some assembly required for other environments.
+Helm chart for a self-hosted media server running on Kubernetes. Deploys **Plex**, **Sonarr**, **Radarr**, **qBittorrent**, **Prowlarr** and **Seerr** — all traffic-sensitive apps run with a dedicated **Gluetun VPN sidecar** (supports any [gluetun-compatible](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers) VPN provider).
 
 ---
 
 ## Stack
 
-| App | Purpose | VPN |
-|-----|---------|-----|
-| Plex | Media server | No (direct) |
-| Sonarr | TV show management | Yes (gluetun sidecar) |
-| Radarr | Movie management | Yes (gluetun sidecar) |
-| qBittorrent | Torrent client | Yes (gluetun sidecar) |
-| Prowlarr | Indexer aggregator | Yes (gluetun sidecar) |
-| Seerr | Request management | No (direct) |
+| App | Purpose | VPN sidecar |
+|-----|---------|-------------|
+| Plex | Media server | No |
+| Sonarr | TV show management | Yes |
+| Radarr | Movie management | Yes |
+| qBittorrent | Torrent client | Yes |
+| Prowlarr | Indexer aggregator | Yes |
+| Seerr | Request management | No |
 
-qBittorrent also runs a **port-updater sidecar** that automatically applies the PIA-forwarded port to qBittorrent via its API — no manual port configuration needed.
+Each VPN app runs gluetun as a sidecar in the same pod — no shared VPN proxy, no network policies needed. qBittorrent also runs a **port-updater sidecar** that watches the gluetun-forwarded port and applies it to qBittorrent automatically via API.
 
 ---
 
 ## Prerequisites
 
-- Kubernetes cluster (tested on MicroK8s, Ubuntu 24.04)
-- [Gateway API CRDs](https://gateway-api.sigs.k8s.io/) installed
-- [nginx-gateway-fabric](https://github.com/nginx/nginx-gateway-fabric) as the Gateway controller
-- A `Gateway` resource named `nginx-gateway` in namespace `nginx-gateway` with a listener section named `houseslab-local` for `*.local.houseslab.org` (or adapt `values.yaml` to your own gateway)
-- mergerfs (or compatible) storage pool at `/mnt/plexpool`
-- Private Internet Access (PIA) subscription
+- Kubernetes cluster (single-node works fine — tested on MicroK8s, Ubuntu 24.04)
+- Helm 3
+- A VPN subscription supported by [gluetun](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers)
+- Storage at the paths you configure in `values.yaml` (mergerfs pool recommended for multi-disk setups)
+- One of:
+  - **Gateway API** with [nginx-gateway-fabric](https://github.com/nginx/nginx-gateway-fabric) — set `global.routing.type: gateway`
+  - **Standard Ingress** with any nginx ingress controller — set `global.routing.type: ingress`
 
 ---
 
-## Setup
+## Quick start
 
 ### 1. Create the namespace
 
@@ -40,22 +39,26 @@ qBittorrent also runs a **port-updater sidecar** that automatically applies the 
 kubectl create namespace plex
 ```
 
-Label it so the Gateway allows HTTPRoutes from it:
+If using Gateway API, label the namespace so the Gateway accepts routes from it:
 
 ```sh
 kubectl label namespace plex expose-via-gw=true
 ```
 
-### 2. Create the PIA secret
+### 2. Create the VPN secret
 
 ```sh
 kubectl create secret generic pia-credentials \
-  --from-literal=username='<your_pia_username>' \
-  --from-literal=password='<your_pia_password>' \
+  --from-literal=username='YOUR_VPN_USERNAME' \
+  --from-literal=password='YOUR_VPN_PASSWORD' \
   -n plex
 ```
 
+Change the secret name in `values.yaml` if your provider or secret name differs (`global.vpn.secret`).
+
 ### 3. Create required directories
+
+At minimum you need config dirs and wherever you want media stored:
 
 ```sh
 sudo mkdir -p \
@@ -65,87 +68,138 @@ sudo mkdir -p \
   /opt/docker_volumes/radarr \
   /opt/docker_volumes/prowlarr \
   /opt/docker_volumes/qbittorrent/config \
-  /opt/docker_volumes/seerr \
-  /mnt/plexpool/movies \
-  /mnt/plexpool/tvshows \
-  /mnt/plexpool/barnfilmer \
-  /mnt/plexpool/barnserier \
-  /mnt/plexpool/newDownloads \
-  /mnt/plexpool/incomplete \
-  /mnt/plexpool/finished
+  /opt/docker_volumes/seerr
+
+sudo chown -R 1000:1000 /opt/docker_volumes
 ```
 
-Ensure UID/GID 1000 has read/write access:
+Media paths are configured per-app in `values.yaml` — point them wherever your files live.
 
-```sh
-sudo chown -R 1000:1000 /opt/docker_volumes /mnt/plexpool
-```
+### 4. Edit values.yaml
 
-### 4. Configure values.yaml
-
-Key settings to review before installing:
+Key things to set before installing:
 
 ```yaml
 global:
-  tz: Europe/Stockholm          # your timezone
-  gateway:
-    name: nginx-gateway         # your Gateway name
-    namespace: nginx-gateway    # your Gateway namespace
-    section: houseslab-local    # your listener section name
+  tz: Europe/London                   # your timezone
+
+  routing:
+    type: gateway                     # "gateway" or "ingress"
+    gateway:
+      name: nginx-gateway             # your Gateway resource name
+      namespace: nginx-gateway        # namespace it lives in
+      section: houseslab-local        # listener section name
+    ingressClass: nginx               # used when type is "ingress"
+
   vpn:
-    region: "Netherlands"       # PIA region
+    provider: private internet access # your VPN provider (see gluetun docs)
+    type: openvpn                     # openvpn or wireguard
+    region: "Netherlands"             # server region
+    secret: pia-credentials           # k8s secret with username/password
 
 apps:
   - name: plex
     env:
       ADVERTISE_IP: "https://plex.yourdomain.com,http://192.168.x.x:32400"
     volumes:
-      config: /opt/docker_volumes/plex/config
-      transcode: /opt/docker_volumes/plex/transcode
-      movies: /mnt/plexpool/movies
-      ...
+      config: /your/plex/config
+      transcode: /your/plex/transcode
+      movies: /your/movies
+
+  - name: sonarr
+    ingressHost: son.yourdomain.com
+    # add any custom media paths:
+    extraVolumeMounts:
+      - name: tvshows
+        mountPath: /tvshows
+        hostPath: /your/tvshows
 ```
 
-All `ingressHost` values follow the pattern `<app>.local.houseslab.org` — change these to match your own domain.
-
----
-
-## Install / Upgrade
+### 5. Install
 
 ```sh
-# Install
-microk8s helm install media-stack ~/repos/media-stack -n plex
-
-# Upgrade (never use --reuse-values — it silently ignores values.yaml changes)
-microk8s helm upgrade media-stack ~/repos/media-stack -n plex --force
+helm install media-stack . -n plex
 ```
 
-After a configmap-only change, restart affected deployments manually:
+Upgrade:
 
 ```sh
-microk8s kubectl rollout restart deployment/<name> -n plex
+helm upgrade media-stack . -n plex
 ```
+
+> **MicroK8s users:** use `microk8s helm` and `~/repos/media-stack` as the chart path. Never use `--reuse-values` — it silently ignores `values.yaml` changes.
 
 ---
 
 ## Accessing apps
 
-Apps are exposed via Gateway API HTTPRoutes on port 443 (HTTPS only). Add entries to your local `/etc/hosts` pointing to your Gateway's external IP:
+### Gateway API (type: gateway)
+
+Apps are exposed as HTTPRoutes on HTTPS (port 443). Add entries to your local `/etc/hosts` pointing to your Gateway's external IP:
 
 ```
-192.168.1.241 plex.local.houseslab.org son.local.houseslab.org rad.local.houseslab.org qbit.local.houseslab.org pro.local.houseslab.org seerr.local.houseslab.org
+192.168.1.241 plex.yourdomain.com son.yourdomain.com rad.yourdomain.com qbit.yourdomain.com pro.yourdomain.com seerr.yourdomain.com
 ```
 
-Replace `192.168.1.241` with your Gateway controller's external IP.
+Then open e.g. `https://son.yourdomain.com`.
 
-| App | URL |
-|-----|-----|
-| Plex | https://plex.local.houseslab.org |
-| Sonarr | https://son.local.houseslab.org |
-| Radarr | https://rad.local.houseslab.org |
-| qBittorrent | https://qbit.local.houseslab.org |
-| Prowlarr | https://pro.local.houseslab.org |
-| Seerr | https://seerr.local.houseslab.org |
+### Standard Ingress (type: ingress)
+
+Apps are exposed as Ingress objects. Add entries to `/etc/hosts` pointing to your ingress controller IP:
+
+```
+192.168.1.128 plex.yourdomain.com son.yourdomain.com rad.yourdomain.com qbit.yourdomain.com pro.yourdomain.com seerr.yourdomain.com
+```
+
+Then open e.g. `http://son.yourdomain.com`.
+
+---
+
+## Custom media volumes
+
+Any extra mount — a second movie library, a kids category, a music folder — goes in `extraVolumeMounts` on the app that needs it:
+
+```yaml
+- name: radarr
+  extraVolumeMounts:
+    - name: kids-movies
+      mountPath: /kids
+      hostPath: /mnt/pool/kids-movies
+    - name: documentaries
+      mountPath: /docs
+      hostPath: /mnt/pool/documentaries
+```
+
+No template changes needed — just add to `values.yaml`.
+
+---
+
+## Storage (mergerfs)
+
+For multi-disk setups, [mergerfs](https://github.com/trapexit/mergerfs) combines drives into a single mount point. Example `/etc/fstab`:
+
+```
+/media/disk1:/media/disk2:/media/disk3 /mnt/pool fuse.mergerfs defaults,allow_other,use_ino,category.create=epmfs,nonempty 0 0
+```
+
+Mount drives by UUID to avoid reorder on reboot:
+
+```sh
+# find UUIDs
+lsblk -o NAME,UUID,MOUNTPOINT
+
+# in /etc/fstab:
+UUID=<disk-uuid> /media/disk1 ext4 defaults,nofail 0 2
+```
+
+---
+
+## VPN details
+
+- Any [gluetun-supported provider](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers) works — set `global.vpn.provider`, `global.vpn.type`, and `global.vpn.region`
+- Port forwarding is enabled by default (PIA) — the port-updater sidecar applies it to qBittorrent automatically
+- All probes on VPN apps use `exec wget localhost` instead of `tcpSocket` — gluetun's iptables blocks external TCP probes from the kubelet, so exec probes running inside the container are required
+- Startup probe allows up to 10 minutes for slow app starts (failureThreshold 60 × periodSeconds 10)
 
 ---
 
@@ -153,69 +207,35 @@ Replace `192.168.1.241` with your Gateway controller's external IP.
 
 ### qBittorrent first login
 
-The first time qBittorrent starts, a temporary password is generated. Find it in the logs:
+A temporary password is printed in the logs on first start:
 
 ```sh
-microk8s kubectl logs -n plex -l app=qbittorrent -c qbittorrent | grep -i password
+kubectl logs -n plex -l app=qbittorrent -c qbittorrent | grep -i password
 ```
 
-Log in, then change the password under **Options → WebUI → Authentication**. The port-updater sidecar whitelists `10.0.0.0/8` for passwordless API access, so no credentials are needed for automation.
+Log in, change the password under **Options → WebUI → Authentication**.
 
-### Connect Prowlarr → Sonarr & Radarr
+### Wire up the apps
 
-1. Open Prowlarr → **Settings → Apps**
-2. Add Sonarr: `http://sonarr-service:8989`, API key from Sonarr → **Settings → General**
-3. Add Radarr: `http://radarr-service:7878`, API key from Radarr → **Settings → General**
+1. **Prowlarr → Sonarr & Radarr**: Prowlarr → Settings → Apps → Add each, using cluster-internal URLs:
+   - Sonarr: `http://sonarr-service:8989`
+   - Radarr: `http://radarr-service:7878`
+   - API keys from each app under Settings → General
 
-### Connect Sonarr & Radarr → qBittorrent
+2. **Sonarr & Radarr → qBittorrent**: Settings → Download Clients → qBittorrent
+   - Host: `localhost`, Port: `8080`
+   - No credentials needed (same pod network namespace)
 
-In Sonarr/Radarr → **Settings → Download Clients → Add → qBittorrent**:
-- Host: `localhost`
-- Port: `8080`
-- No credentials needed (runs in same pod network namespace)
-
-### Connect Seerr → Plex, Sonarr & Radarr
-
-Open Seerr and follow the setup wizard. Use cluster-internal service names:
-- Plex: `http://plex-service:32400`
-- Sonarr: `http://sonarr-service:8989`
-- Radarr: `http://radarr-service:7878`
-
----
-
-## Storage (mergerfs)
-
-The chart expects media at `/mnt/plexpool` — a mergerfs pool combining multiple drives. Example `/etc/fstab` entry:
-
-```
-/media/plex1:/media/plex3:/media/plex4 /mnt/plexpool fuse.mergerfs defaults,allow_other,use_ino,category.create=epmfs,nonempty 0 0
-```
-
-Mount each drive by UUID to avoid mismatches on reboot:
-
-```sh
-lsblk -o NAME,UUID,MOUNTPOINT   # find UUIDs
-```
-
-```
-UUID=<disk-uuid> /media/plex1 ext4 defaults,nofail 0 2
-```
-
----
-
-## VPN details
-
-- Provider: Private Internet Access (PIA), OpenVPN
-- Port forwarding: enabled — gluetun writes the forwarded port to `/tmp/gluetun/forwarded_port`
-- Port-updater sidecar on qBittorrent polls that file and applies the port via qBittorrent API
-- All probes on VPN-sidecar apps use `exec wget localhost` (not `tcpSocket`) — gluetun's iptables blocks kubelet TCP probes from outside the pod
+3. **Seerr → Plex, Sonarr & Radarr**: follow the setup wizard, use:
+   - Plex: `http://plex-service:32400`
+   - Sonarr/Radarr: as above
 
 ---
 
 ## Uninstall
 
 ```sh
-microk8s helm uninstall media-stack -n plex
+helm uninstall media-stack -n plex
 ```
 
-This removes all Deployments, Services, ConfigMaps and HTTPRoutes managed by the chart. Persistent data in `/opt/docker_volumes` and `/mnt/plexpool` is untouched.
+Persistent data in your config and media directories is untouched.
