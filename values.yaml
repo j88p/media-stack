@@ -10,15 +10,13 @@ global:
     region: "Netherlands"
     dns: 10.152.183.10
     outboundSubnets: "10.1.0.0/16,10.152.183.0/24,192.168.0.0/16,10.244.0.0/16"
-    image: qmcgaw/gluetun:v3.41.1
+    image: qmcgaw/gluetun:v3.41.3
     secret: pia-credentials
     openvpnEndpointPort: "1197"
     openvpnProtocol: udp
   media:
     imageRepo: linuxserver
-    # Base path for media volumes
     basePath: /opt/docker_volumes
-    # Media directories
     volumes:
       downloads: /media/downloads
       movies: /media/movies
@@ -51,19 +49,28 @@ resources:
     limits:
       memory: "4Gi"
       cpu: "2000m"
+  portUpdater:
+    requests:
+      memory: "16Mi"
+      cpu: "10m"
+    limits:
+      memory: "32Mi"
+      cpu: "50m"
 
 apps:
   - name: qbittorrent
     port: 8080
+    imageTag: "5.2.4_v2.0.15-ls481"
     needsDownloads: true
+    portForwardUpdater: true
     ingressHost: qbit.lan
-    # qBittorrent-specific path overrides
     configHostPath: /opt/docker_volumes/qbittorrent/config
     downloadsHostPath: /mnt/plexpool/newDownloads
     incompleteHostPath: /mnt/plexpool/incomplete
     finishedHostPath: /mnt/plexpool/finished
   - name: sonarr
     port: 8989
+    imageTag: "4.0.20.3014-ls329"
     needsDownloads: true
     needsTv: true
     needsTvshows: true
@@ -74,6 +81,7 @@ apps:
     finishedHostPath: /mnt/plexpool/finished
   - name: radarr
     port: 7878
+    imageTag: "6.4.4.10685-ls321"
     needsDownloads: true
     needsMovies: true
     needsBarnfilmer: true
@@ -83,11 +91,13 @@ apps:
     finishedHostPath: /mnt/plexpool/finished
   - name: prowlarr
     port: 9696
+    imageTag: "2.6.5.5623-ls163"
     needsDownloads: false
     ingressHost: pro.lan
 
   - name: seerr
     port: 5055
+    imageTag: "3.5.0"
     noVpn: true
     imageRepo: seerr
     configMountPath: /app/config
@@ -96,6 +106,7 @@ apps:
 
   - name: plex
     port: 32400
+    imageTag: "1.43.4.10903-e5521bd8c-ls327"
     serviceType: ClusterIP
     ingressHost: plex.lan
     hostNetwork: true

@@ -1,0 +1,37 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: media-stack-alerts
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: media-stack
+      interval: 1m
+      rules:
+        - alert: GluetunFrequentRestarts
+          expr: |
+            increase(kube_pod_container_status_restarts_total{
+              namespace="{{ .Values.global.namespace }}",
+              container="gluetun"
+            }[15m]) > 3
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Gluetun restarting frequently"
+            description: "{{ "{{" }} $labels.pod {{ "}}" }} gluetun has restarted {{ "{{" }} $value | printf \"%.0f\" {{ "}}" }} times in 15 minutes."
+
+        - alert: MediaAppDown
+          expr: |
+            kube_deployment_status_replicas_available{
+              namespace="{{ .Values.global.namespace }}"
+            } == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Media app has no available replicas"
+            description: "{{ "{{" }} $labels.deployment {{ "}}" }} has been down for 5 minutes."
