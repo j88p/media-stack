@@ -47,13 +47,13 @@ spec:
                   name: media-common-env
             env:
               - name: PUID
-                value: "0"
+                value: "{{ $.Values.global.puid }}"
               - name: PGID
-                value: "0"
+                value: "{{ $.Values.global.pgid }}"
               - name: VERSION
                 value: "docker"
               - name: ADVERTISE_IP
-                value: "https://plex.houseslab.org,http://192.168.1.128:32400"
+                value: "{{ .env.ADVERTISE_IP }}"
             resources:
               {{- toYaml $.Values.resources.media | nindent 14 }}
             securityContext:

@@ -10,8 +10,10 @@ global:
     region: SE Stockholm
     dns: 10.152.183.10
     outboundSubnets: "10.0.0.0/8,192.168.0.0/16,10.244.0.0/16"
-    image: qmcgaw/gluetun:latest
+    image: qmcgaw/gluetun:v3.41.1
     secret: pia-credentials
+    openvpnEndpointPort: "1197"
+    openvpnProtocol: udp
   media:
     imageRepo: linuxserver
     # Base path for media volumes
@@ -81,6 +83,7 @@ apps:
     needsDownloads: false
     ingressHost: ovr.lan
     imageTag: develop
+    configHostPath: /opt/docker_volumes/seerr
 
   - name: plex
     port: 32400

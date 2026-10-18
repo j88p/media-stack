@@ -19,4 +19,7 @@ data:
   FIREWALL_INPUT_PORTS: "{{ join "," $ports }}"
   DOT: "off"
   DNS_ADDRESS: "{{ .Values.global.vpn.dns }}"
+  FIREWALL_ALLOW_LAN: "true"
+  OPENVPN_ENDPOINT_PORT: "{{ .Values.global.vpn.openvpnEndpointPort }}"
+  OPENVPN_PROTOCOL: "{{ .Values.global.vpn.openvpnProtocol }}"
   HEALTH_SERVER_ADDRESS: ":9999"
