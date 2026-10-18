@@ -196,8 +196,44 @@ UUID=<disk-uuid> /media/disk1 ext4 defaults,nofail 0 2
 
 ## VPN details
 
-- Any [gluetun-supported provider](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers) works — set `global.vpn.provider`, `global.vpn.type`, and `global.vpn.region`
-- Port forwarding is enabled by default (PIA) — the port-updater sidecar applies it to qBittorrent automatically
+Any [gluetun-supported provider](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers) works. The secret fields differ per provider — check the gluetun wiki for the exact keys required. Common examples:
+
+**Private Internet Access (OpenVPN)**
+```yaml
+vpn:
+  provider: private internet access
+  type: openvpn
+  secret: pia-credentials   # keys: username, password
+```
+
+**Mullvad (WireGuard)**
+```yaml
+vpn:
+  provider: mullvad
+  type: wireguard
+  secret: mullvad-credentials  # keys: private_key, addresses (+ optional city/country)
+```
+
+**NordVPN (WireGuard)**
+```yaml
+vpn:
+  provider: nordvpn
+  type: wireguard
+  secret: nordvpn-credentials  # keys: private_key
+```
+
+**ExpressVPN (OpenVPN)**
+```yaml
+vpn:
+  provider: expressvpn
+  type: openvpn
+  secret: expressvpn-credentials  # keys: activation_code
+```
+
+Full provider list and secret fields: [gluetun provider docs](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers)
+
+**Other notes:**
+- Port forwarding is enabled by default (PIA-specific) — the port-updater sidecar applies it to qBittorrent automatically. Disable with `portForwardUpdater: false` for other providers
 - All probes on VPN apps use `exec wget localhost` instead of `tcpSocket` — gluetun's iptables blocks external TCP probes from the kubelet, so exec probes running inside the container are required
 - Startup probe allows up to 10 minutes for slow app starts (failureThreshold 60 × periodSeconds 10)
 
