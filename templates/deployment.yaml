@@ -11,6 +11,10 @@ metadata:
     vpn-access: {{ if eq .name "plex" }}none{{ else }}required{{ end }}
 spec:
   replicas: 1
+  {{- if eq .name "plex" }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       app: {{ .name }}
