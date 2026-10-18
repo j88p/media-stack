@@ -8,9 +8,6 @@ metadata:
   namespace: {{ $.Values.global.namespace }}
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
-    {{- if $.Values.global.ingressClass }}
-    kubernetes.io/ingress.class: {{ $.Values.global.ingressClass | quote }}
-    {{- end }}
 spec:
   {{- if $.Values.global.ingressClass }}
   ingressClassName: {{ $.Values.global.ingressClass }}

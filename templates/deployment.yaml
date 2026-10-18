@@ -55,7 +55,7 @@ spec:
               - name: ADVERTISE_IP
                 value: "{{ .env.ADVERTISE_IP }}"
             resources:
-              {{- toYaml $.Values.resources.media | nindent 14 }}
+              {{- toYaml $.Values.resources.plex | nindent 14 }}
             securityContext:
               privileged: true
               runAsUser: 1000
@@ -76,22 +76,22 @@ spec:
         volumes:
           - name: plex-config
             hostPath:
-              path: /opt/docker_volumes/plex/config
+              path: {{ .volumes.config }}
           - name: transcode
             hostPath:
-              path: /opt/docker_volumes/plex/transcode
+              path: {{ .volumes.transcode }}
           - name: movies
             hostPath:
-              path: /mnt/plexpool/movies
+              path: {{ .volumes.movies }}
           - name: barnfilmer
             hostPath:
-              path: /mnt/plexpool/barnfilmer
+              path: {{ .volumes.barnfilmer }}
           - name: tvshows
             hostPath:
-              path: /mnt/plexpool/tvshows
+              path: {{ .volumes.tvshows }}
           - name: barnserier
             hostPath:
-              path: /mnt/plexpool/barnserier
+              path: {{ .volumes.barnserier }}
       {{- else if .noVpn }}
         containers:
           - name: {{ .name }}
@@ -143,8 +143,8 @@ spec:
                 port: 9999
               initialDelaySeconds: 30
               periodSeconds: 30
-              failureThreshold: 6
-              timeoutSeconds: 5
+              failureThreshold: 10
+              timeoutSeconds: 15
             envFrom:
               - configMapRef:
                   name: gluetun-common-env
