@@ -155,10 +155,6 @@ spec:
               - configMapRef:
                   name: gluetun-common-env
             env:
-              - name: FIREWALL_VPN_INPUT_PORTS
-                value: "{{ .port }}"
-              - name: VPN_INPUT_PORTS
-                value: "{{ .port }}"
               - name: OPENVPN_USER
                 valueFrom:
                   secretKeyRef:
@@ -218,21 +214,30 @@ spec:
             resources:
               {{- toYaml $.Values.resources.media | nindent 14 }}
             startupProbe:
-              tcpSocket:
-                port: {{ .port }}
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - wget -q -O /dev/null http://localhost:{{ .port }}/
               initialDelaySeconds: 10
               periodSeconds: 10
               failureThreshold: 60
               timeoutSeconds: 5
             livenessProbe:
-              tcpSocket:
-                port: {{ .port }}
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - wget -q -O /dev/null http://localhost:{{ .port }}/
               periodSeconds: 30
               timeoutSeconds: 10
               failureThreshold: 5
             readinessProbe:
-              tcpSocket:
-                port: {{ .port }}
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - wget -q -O /dev/null http://localhost:{{ .port }}/
               periodSeconds: 20
               timeoutSeconds: 10
               failureThreshold: 5

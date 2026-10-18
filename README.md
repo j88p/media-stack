@@ -1,175 +1,221 @@
-# Media Stack Helm Chart
+# media-stack
 
-`disclaimer`: guiden är inte komplett, det kommer vara saker som stökar. Jag har med all säkerhet missat att beskriva vissa delar. Notera gärna det och skriv en issue så kan jag förtydliga vid behov. Målet är att charten ska bli så nära plug‑and‑play som möjligt.
+Helm chart for a self-hosted media server running on Kubernetes. Deploys **Plex**, **Sonarr**, **Radarr**, **qBittorrent**, **Prowlarr** and **Seerr** — all traffic-sensitive apps run with a dedicated **Gluetun VPN sidecar** (PIA / OpenVPN).
 
-Denna chart har som mål att automatisera installationen och delar av konfigurationen för en privat mediaserver i ett Kubernetes‑kluster baserat på tjänster som `Plex`, `Sonarr`, `Radarr`, `Prowlarr`, `Overseerr` samt `qBittorrent`, inkapsulerade av `Gluetun VPN`. I denna första release har samtliga tjänster (utom Plex) en egen VPN‑sidecar i podden. Det är enklare att få säkert nätverk på plats så, men på sikt vore det bra om en och samma Gluetun‑podd kan sköta hela nätverket i ett namespace. Det kräver dock viss `networkPolicy`‑handpåläggning i klustret. Fördelen är att det då bara krävs en VPN‑anslutning i stället för fem. Private Internet Access (VPN) erbjuder tio anslutningar i en vanlig prenumeration, så det äter upp en del av den poolen; jag vet inte hur det ser ut hos andra VPN‑tjänster.
+> **Note:** This chart is built for a single-node MicroK8s setup with Gateway API (nginx-gateway-fabric) and mergerfs storage. Some assembly required for other environments.
 
-Just nu stödjer den bara Private Internet Access via `OpenVPN`. Det går dock bra att lägga till flera providers så säg vilka ni vill ha med, men kolla först så de stöds av OpenVPN. Målet är att kunna sätta specifika providers som flaggor vid helm installationen.
+---
 
-Man kommer behöva tweaka en del saker för att få det att funka. Bland annat behöver man på sin lokala maskin lägga till de hostnamn som skapas upp i respektive `Ingress`.
+## Stack
 
-- `sudo nano /etc/hosts` eller
-- `code /etc/hosts`
+| App | Purpose | VPN |
+|-----|---------|-----|
+| Plex | Media server | No (direct) |
+| Sonarr | TV show management | Yes (gluetun sidecar) |
+| Radarr | Movie management | Yes (gluetun sidecar) |
+| qBittorrent | Torrent client | Yes (gluetun sidecar) |
+| Prowlarr | Indexer aggregator | Yes (gluetun sidecar) |
+| Seerr | Request management | No (direct) |
 
-**Lägg till i filen**:
+qBittorrent also runs a **port-updater sidecar** that automatically applies the PIA-forwarded port to qBittorrent via its API — no manual port configuration needed.
 
-```bash
-192.168.1.128 qbit.lan ovr.lan son.lan rad.lan pro.lan plex.lan
+---
+
+## Prerequisites
+
+- Kubernetes cluster (tested on MicroK8s, Ubuntu 24.04)
+- [Gateway API CRDs](https://gateway-api.sigs.k8s.io/) installed
+- [nginx-gateway-fabric](https://github.com/nginx/nginx-gateway-fabric) as the Gateway controller
+- A `Gateway` resource named `nginx-gateway` in namespace `nginx-gateway` with a listener section named `houseslab-local` for `*.local.houseslab.org` (or adapt `values.yaml` to your own gateway)
+- mergerfs (or compatible) storage pool at `/mnt/plexpool`
+- Private Internet Access (PIA) subscription
+
+---
+
+## Setup
+
+### 1. Create the namespace
+
+```sh
+kubectl create namespace plex
 ```
 
-Se till att hostnamnen pekar mot _din_ servers lokala IP‑adress, till exempel `192.168.1.128`. Då kommer du kunna nå dina tjänster över det lokala nätet på de adresserna, till exempel `plex.lan` eller `son.lan`.
+Label it so the Gateway allows HTTPRoutes from it:
 
-Jag rekommenderar att man kör med samma mountPaths till kataloger om man kan; då blir det enklare att ta emot uppdateringar av charten. Vi kan också lägga till fler mountPaths om man vill ha mer eller bättre kategorisering av Plex‑innehållet.
+```sh
+kubectl label namespace plex expose-via-gw=true
+```
 
-Den är inte perfekt, men alla tjänster startar. Det tar ungefär två minuter att spinna upp helt. Det beror på att varje VPN‑anslutning måste kopplas upp, så varje deployment har en `initialDelaySeconds` på mellan 90 och 120 sekunder för att proberna inte ska misslyckas innan anslutningen gjorts.
-
-Viss manuell konfiguration krävs fortfarande. Prowlarr behöver kopplas till Sonarr och Radarr, Sonarr och Radarr behöver kopplas till qBittorrent. Overseerr behöver i sin tur kopplas till Plex, Sonarr och Radarr. Jag har försökt förkonfigurera så mycket som möjligt så att dessa kopplingar görs inom klusternätverket, så förhoppningsvis behöver man bara lägga in de API‑nycklar som skapas upp i Sonarr, Radarr och Prowlarr under _Settings -> General -> API key_.
-
-För att komma åt `qBittorrent` är det viktigt att man vid **första uppstart** går in i loggarna: `kubectl logs qbittorrent-xxxxxx-xxxxx -n plex -c qbittorrent`. Där ser du ett autogenererat förstagångslösenord – använd det för att logga in. Byt sedan i menyn under _Options -> WebUI -> Authentication_. Detta använder du för att konfigurera Sonarr och Radarr mot qBittorrent.
-
-## Att göra
-
-### Skapa Namespace Plex
-
-`kubectl create ns plex`
-
-### Skapa en PIA VPN k8s secret
+### 2. Create the PIA secret
 
 ```sh
 kubectl create secret generic pia-credentials \
-   --from-literal=username='<your_pia_username>' \
-   --from-literal=password='<your_pia_password>' \
-   -n <namespace>
+  --from-literal=username='<your_pia_username>' \
+  --from-literal=password='<your_pia_password>' \
+  -n plex
 ```
 
-Ersätt `<your_pia_username>`, `<your_pia_password>` och `<namespace>` med dina uppgifter.
-
-### Obligatoriska sökvägar och kataloger
-
-Skapa dessa mappar och se till att dina mediafiler ligger där. Alternativt justera dessa sökvägar efter eget behov, men det finns ingen lösning för att undvika att de skrivs över vid uppdateringar.
-
-- `/opt/docker_volumes/plex/config`
-- `/opt/docker_volumes/plex/transcode`
-- `/opt/docker_volumes/overseerr`
-- `/opt/docker_volumes/prowlarr`
-- `/opt/docker_volumes/qbittorrent/config`
-- `/mnt/plexpool/movies`
-- `/mnt/plexpool/tvshows`
-- `/mnt/plexpool/barnfilmer`
-- `/mnt/plexpool/barnserier`
-- `/mnt/plexpool/newDownloads`
-
-Justeras i `values.yaml`. Glöm inte att det behöver finnas läs och skriv rättigheter till dessa mappar. Överväg att ge alla rätt att läsa och skriva till dessa om du inte hellre vill krångla med specifika rättigheter.
-
-Vi kan som sagt även lägga till fler mountPaths för att skapa bättre kategorisering i Plex‑UI. Exempelvis Documentaries, Horror osv.
-
-### Använd fsmerge för plexpool
-
-För att underlätta hantering av mediebibliotek rekommenderas `fsmerge` eller motsvarande drive‑pooling‑verktyg. Det skapar virtualiserad lagring där alla externa hårddiskar abstraheras bort och ersätts av: `/mnt/plexpool`. Montera varje disk via `/etc/fstab` för att automatisera montering vid uppstart och omstart. Om man inte monterar på UUID kommer servern blanda ihop monteringarna vid omstart.
-
-1. Installera fsmerge:
-
-   ```sh
-   pip install fsmerge
-   ```
-
-2. Skapa en konfigurationsfil (t.ex. `/etc/fsmerge/plexpool.conf`) som listar dina källkataloger.
-3. Kör fsmerge:
-
-   ```sh
-   fsmerge /etc/fsmerge/plexpool.conf /mnt/plexpool
-   ```
-
-### Montera diskar via UUID i /etc/fstab
-
-Hämta diskarnas UUID. Här är det bra om du redan har formaterat till ext4‑format. Kör helst inte med adaptrar och NTFS om du inte måste. Kom ihåg att du rensar allt på disken om du formaterar om den.
+### 3. Create required directories
 
 ```sh
-lsblk -o NAME,UUID,MOUNTPOINT
-blkid
+sudo mkdir -p \
+  /opt/docker_volumes/plex/config \
+  /opt/docker_volumes/plex/transcode \
+  /opt/docker_volumes/sonarr \
+  /opt/docker_volumes/radarr \
+  /opt/docker_volumes/prowlarr \
+  /opt/docker_volumes/qbittorrent/config \
+  /opt/docker_volumes/seerr \
+  /mnt/plexpool/movies \
+  /mnt/plexpool/tvshows \
+  /mnt/plexpool/barnfilmer \
+  /mnt/plexpool/barnserier \
+  /mnt/plexpool/newDownloads \
+  /mnt/plexpool/incomplete \
+  /mnt/plexpool/finished
 ```
 
-Redigera `/etc/fstab` för att montera via UUID:
-
-```
-# Plex1
-UUID=c6078a53-52b1-4711-9511-1cec7bfa11e8 /media/plex7 ext4 defaults,nofail 0 2
-
-# PLEX2
-UUID=c58af61f-4851-4dae-bbab-e13ead158fa7 /media/plex8 ext4 defaults,nofail 0 2
-
-# Plex3
-#UUID=<your-disk-uuid> /media/plex9 ext4 defaults,nofail 0 2
-
-# FSMERGE
-/media/plex1:/media/plex2:/media/plex3 /mnt/plexpool fuse.mergerfs defaults,allow_other,use_ino,category.create=mfs,nonempty 0 0
-
-...etc...
-```
-
-Detta gör att dina diskar kommer monteras pålitligt vid varje uppstart.
-
-Skapa monteringspunkter och montera:
+Ensure UID/GID 1000 has read/write access:
 
 ```sh
-sudo mkdir -p /mnt/plexpool/movies
+sudo chown -R 1000:1000 /opt/docker_volumes /mnt/plexpool
 ```
+
+### 4. Configure values.yaml
+
+Key settings to review before installing:
+
+```yaml
+global:
+  tz: Europe/Stockholm          # your timezone
+  gateway:
+    name: nginx-gateway         # your Gateway name
+    namespace: nginx-gateway    # your Gateway namespace
+    section: houseslab-local    # your listener section name
+  vpn:
+    region: "Netherlands"       # PIA region
+
+apps:
+  - name: plex
+    env:
+      ADVERTISE_IP: "https://plex.yourdomain.com,http://192.168.x.x:32400"
+    volumes:
+      config: /opt/docker_volumes/plex/config
+      transcode: /opt/docker_volumes/plex/transcode
+      movies: /mnt/plexpool/movies
+      ...
+```
+
+All `ingressHost` values follow the pattern `<app>.local.houseslab.org` — change these to match your own domain.
+
+---
+
+## Install / Upgrade
 
 ```sh
-sudo mkdir -p /media/plex1 (2, 3) osv...
+# Install
+microk8s helm install media-stack ~/repos/media-stack -n plex
+
+# Upgrade (never use --reuse-values — it silently ignores values.yaml changes)
+microk8s helm upgrade media-stack ~/repos/media-stack -n plex --force
 ```
 
-Glöm inte att det måste finnas läs‑ och skrivrättigheter. `chmod +x ...`
-
-För att applicera förändringar:
-
-- `sudo mount -a`
-
-För att se monteringarna:
-
-- `df -h`
-
-**Du kan behöva tweaka detta och stöka lite grann men det är värt mödan, ta hjälp av AI för att få allt på plats** 🤴🏼
-
-Så här kan du formattera diskar till EXT4
+After a configmap-only change, restart affected deployments manually:
 
 ```sh
-sudo mkfs.ext4 /dev/sdX
+microk8s kubectl rollout restart deployment/<name> -n plex
 ```
 
-## Helm
+---
 
-1. **Klona media-stack repot:**
+## Accessing apps
 
-   ```sh
-   git clone https://github.com/j88p/media-stack.git
-   cd media-stack/helm/media-stack-v1.0
-   ```
+Apps are exposed via Gateway API HTTPRoutes on port 443 (HTTPS only). Add entries to your local `/etc/hosts` pointing to your Gateway's external IP:
 
-2. **Redigera `values.yaml`:**
-   - Ange dina media-/konfigurationssökvägar under `plex`, `sonarr`, `radarr` m.fl.
-   - Ange VPN-uppgifter och region för Gluetun-sidecars.
-   - Ange Ingress-värdnamn för varje app (t.ex. `son.lan`, `rad.lan`, `qbit.lan`, `plex.lan`).
-   - Lägg vid behov till poster i din `/etc/hosts` som pekar dessa namn till IP-adressen för din Ingress-kontroller (t.ex. `192.168.1.128`).
+```
+192.168.1.241 plex.local.houseslab.org son.local.houseslab.org rad.local.houseslab.org qbit.local.houseslab.org pro.local.houseslab.org seerr.local.houseslab.org
+```
 
-3. **Installera helmchart:**
+Replace `192.168.1.241` with your Gateway controller's external IP.
 
-   ```sh
-   helm install media-stack .
-   ```
+| App | URL |
+|-----|-----|
+| Plex | https://plex.local.houseslab.org |
+| Sonarr | https://son.local.houseslab.org |
+| Radarr | https://rad.local.houseslab.org |
+| qBittorrent | https://qbit.local.houseslab.org |
+| Prowlarr | https://pro.local.houseslab.org |
+| Seerr | https://seerr.local.houseslab.org |
 
-   Eller uppgradera:
+---
 
-   ```sh
-   helm upgrade --install media-stack .
-   ```
+## Post-install configuration
 
-4. **Åtkomst till dina appar:**
-   - Plex: via Ingress (`http://plex.lan`) som routar till tjänsten `plex-service` på port 32400
-   - Övriga appar: via Ingress (`http://son.lan`, `http://rad.lan`, `http://qbit.lan`, `http://pro.lan`, `http://ovr.lan`)
+### qBittorrent first login
 
-## Avinstallera
+The first time qBittorrent starts, a temporary password is generated. Find it in the logs:
 
 ```sh
-helm uninstall media-stack
+microk8s kubectl logs -n plex -l app=qbittorrent -c qbittorrent | grep -i password
 ```
+
+Log in, then change the password under **Options → WebUI → Authentication**. The port-updater sidecar whitelists `10.0.0.0/8` for passwordless API access, so no credentials are needed for automation.
+
+### Connect Prowlarr → Sonarr & Radarr
+
+1. Open Prowlarr → **Settings → Apps**
+2. Add Sonarr: `http://sonarr-service:8989`, API key from Sonarr → **Settings → General**
+3. Add Radarr: `http://radarr-service:7878`, API key from Radarr → **Settings → General**
+
+### Connect Sonarr & Radarr → qBittorrent
+
+In Sonarr/Radarr → **Settings → Download Clients → Add → qBittorrent**:
+- Host: `localhost`
+- Port: `8080`
+- No credentials needed (runs in same pod network namespace)
+
+### Connect Seerr → Plex, Sonarr & Radarr
+
+Open Seerr and follow the setup wizard. Use cluster-internal service names:
+- Plex: `http://plex-service:32400`
+- Sonarr: `http://sonarr-service:8989`
+- Radarr: `http://radarr-service:7878`
+
+---
+
+## Storage (mergerfs)
+
+The chart expects media at `/mnt/plexpool` — a mergerfs pool combining multiple drives. Example `/etc/fstab` entry:
+
+```
+/media/plex1:/media/plex3:/media/plex4 /mnt/plexpool fuse.mergerfs defaults,allow_other,use_ino,category.create=epmfs,nonempty 0 0
+```
+
+Mount each drive by UUID to avoid mismatches on reboot:
+
+```sh
+lsblk -o NAME,UUID,MOUNTPOINT   # find UUIDs
+```
+
+```
+UUID=<disk-uuid> /media/plex1 ext4 defaults,nofail 0 2
+```
+
+---
+
+## VPN details
+
+- Provider: Private Internet Access (PIA), OpenVPN
+- Port forwarding: enabled — gluetun writes the forwarded port to `/tmp/gluetun/forwarded_port`
+- Port-updater sidecar on qBittorrent polls that file and applies the port via qBittorrent API
+- All probes on VPN-sidecar apps use `exec wget localhost` (not `tcpSocket`) — gluetun's iptables blocks kubelet TCP probes from outside the pod
+
+---
+
+## Uninstall
+
+```sh
+microk8s helm uninstall media-stack -n plex
+```
+
+This removes all Deployments, Services, ConfigMaps and HTTPRoutes managed by the chart. Persistent data in `/opt/docker_volumes` and `/mnt/plexpool` is untouched.
