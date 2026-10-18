@@ -127,6 +127,8 @@ apps:
     serviceType: ClusterIP
     ingressHost: plex.yourdomain.com
     hostNetwork: true
+    # Set true to pass an NVIDIA GPU through for hardware transcoding (needs the microk8s nvidia addon)
+    nvidiaGpu: false
     env:
       ADVERTISE_IP: "https://plex.yourdomain.com,http://192.168.x.x:32400"
     securityContext:
