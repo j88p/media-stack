@@ -97,7 +97,7 @@ apps:
 
   - name: seerr
     port: 5055
-    imageTag: "3.5.0"
+    imageTag: "v3.5.0"
     noVpn: true
     imageRepo: seerr
     configMountPath: /app/config
