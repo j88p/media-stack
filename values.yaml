@@ -79,6 +79,14 @@ apps:
     needsDownloads: false
     ingressHost: pro.lan
 
+  - name: seerr
+    port: 5055
+    noVpn: true
+    imageRepo: seerr
+    configMountPath: /app/config
+    configHostPath: /opt/docker_volumes/seerr
+    ingressHost: seerr.lan
+
   - name: plex
     port: 32400
     serviceType: ClusterIP

@@ -92,6 +92,43 @@ spec:
           - name: barnserier
             hostPath:
               path: /mnt/plexpool/barnserier
+      {{- else if .noVpn }}
+        containers:
+          - name: {{ .name }}
+            image: "{{ .imageRepo | default $.Values.global.media.imageRepo }}/{{ .name }}:{{ .imageTag | default "latest" }}"
+            ports:
+              - containerPort: {{ .port }}
+            envFrom:
+              - configMapRef:
+                  name: media-common-env
+            resources:
+              {{- toYaml $.Values.resources.media | nindent 14 }}
+            livenessProbe:
+              tcpSocket:
+                port: {{ .port }}
+              initialDelaySeconds: 60
+              periodSeconds: 30
+              timeoutSeconds: 10
+              failureThreshold: 5
+            readinessProbe:
+              tcpSocket:
+                port: {{ .port }}
+              initialDelaySeconds: 30
+              periodSeconds: 20
+              timeoutSeconds: 10
+              failureThreshold: 5
+            volumeMounts:
+              - name: {{ .name }}-config
+                mountPath: {{ .configMountPath | default "/config" }}
+        volumes:
+          - name: {{ .name }}-config
+            hostPath:
+              {{- if .configHostPath }}
+              path: {{ .configHostPath }}
+              {{- else }}
+              path: {{ $.Values.global.media.basePath }}/{{ .name }}
+              {{- end }}
+              type: DirectoryOrCreate
       {{- else }}
         containers:
           - name: gluetun
@@ -156,7 +193,7 @@ spec:
               failureThreshold: 5
             volumeMounts:
               - name: {{ .name }}-config
-                mountPath: /config
+                mountPath: {{ .configMountPath | default "/config" }}
               {{- if .needsDownloads }}
               - name: downloads
                 mountPath: /downloads
