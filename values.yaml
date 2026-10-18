@@ -78,12 +78,6 @@ apps:
     port: 9696
     needsDownloads: false
     ingressHost: pro.lan
-  - name: overseerr
-    port: 5055
-    needsDownloads: false
-    ingressHost: ovr.lan
-    imageTag: develop
-    configHostPath: /opt/docker_volumes/seerr
 
   - name: plex
     port: 32400
