@@ -142,9 +142,11 @@ spec:
               capabilities:
                 add: [ "NET_ADMIN" ]
             livenessProbe:
-              httpGet:
-                path: /
-                port: 9999
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - wget -q -O /dev/null http://localhost:9999/
               initialDelaySeconds: 30
               periodSeconds: 30
               failureThreshold: 10
