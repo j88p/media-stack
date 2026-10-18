@@ -19,3 +19,4 @@ data:
   FIREWALL_INPUT_PORTS: "{{ join "," $ports }}"
   DOT: "off"
   DNS_ADDRESS: "{{ .Values.global.vpn.dns }}"
+  HEALTH_SERVER_ADDRESS: ":9999"

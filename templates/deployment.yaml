@@ -100,6 +100,14 @@ spec:
               privileged: true
               capabilities:
                 add: [ "NET_ADMIN" ]
+            livenessProbe:
+              httpGet:
+                path: /
+                port: 9999
+              initialDelaySeconds: 30
+              periodSeconds: 30
+              failureThreshold: 6
+              timeoutSeconds: 5
             envFrom:
               - configMapRef:
                   name: gluetun-common-env
@@ -135,14 +143,14 @@ spec:
             livenessProbe:
               tcpSocket:
                 port: {{ .port }}
-              initialDelaySeconds: 120
+              initialDelaySeconds: 180
               periodSeconds: 30
               timeoutSeconds: 10
               failureThreshold: 5
             readinessProbe:
               tcpSocket:
                 port: {{ .port }}
-              initialDelaySeconds: 90
+              initialDelaySeconds: 120
               periodSeconds: 20
               timeoutSeconds: 10
               failureThreshold: 5
