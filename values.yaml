@@ -3,7 +3,10 @@ global:
   tz: Europe/Stockholm
   puid: "1000"
   pgid: "1000"
-  ingressClass: nginx
+  gateway:
+    name: nginx-gateway
+    namespace: nginx-gateway
+    section: houseslab-local
   vpn:
     provider: private internet access
     type: openvpn
@@ -63,7 +66,7 @@ apps:
     imageTag: "5.2.4_v2.0.15-ls481"
     needsDownloads: true
     portForwardUpdater: true
-    ingressHost: qbit.lan
+    ingressHost: qbit.local.houseslab.org
     configHostPath: /opt/docker_volumes/qbittorrent/config
     downloadsHostPath: /mnt/plexpool/newDownloads
     incompleteHostPath: /mnt/plexpool/incomplete
@@ -75,7 +78,7 @@ apps:
     needsTv: true
     needsTvshows: true
     needsBarnserier: true
-    ingressHost: son.lan
+    ingressHost: son.local.houseslab.org
     downloadsHostPath: /mnt/plexpool/newDownloads
     incompleteHostPath: /mnt/plexpool/incomplete
     finishedHostPath: /mnt/plexpool/finished
@@ -85,7 +88,7 @@ apps:
     needsDownloads: true
     needsMovies: true
     needsBarnfilmer: true
-    ingressHost: rad.lan
+    ingressHost: rad.local.houseslab.org
     downloadsHostPath: /mnt/plexpool/newDownloads
     incompleteHostPath: /mnt/plexpool/incomplete
     finishedHostPath: /mnt/plexpool/finished
@@ -93,7 +96,7 @@ apps:
     port: 9696
     imageTag: "2.6.5.5623-ls163"
     needsDownloads: false
-    ingressHost: pro.lan
+    ingressHost: pro.local.houseslab.org
 
   - name: seerr
     port: 5055
@@ -102,13 +105,13 @@ apps:
     imageRepo: seerr
     configMountPath: /app/config
     configHostPath: /opt/docker_volumes/seerr
-    ingressHost: seerr.lan
+    ingressHost: seerr.local.houseslab.org
 
   - name: plex
     port: 32400
     imageTag: "1.43.4.10903-e5521bd8c-ls327"
     serviceType: ClusterIP
-    ingressHost: plex.lan
+    ingressHost: plex.local.houseslab.org
     hostNetwork: true
     needsConfig: true
     needsTranscode: true
